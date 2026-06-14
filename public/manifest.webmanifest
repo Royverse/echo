@@ -1,0 +1,15 @@
+{
+  "name": "ECHO — Drive a robot with your voice",
+  "short_name": "ECHO",
+  "description": "Speak and watch a neon robot move. A voice-driven 3D sandbox.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#05070c",
+  "theme_color": "#05070c",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

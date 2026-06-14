@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ECHO · Drive a robot with your voice</title>
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#05070c" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ECHO" />
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+    <meta name="description" content="ECHO — drive a procedurally-animated neon robot through a sandbox using just your voice. Built with Three.js, Web Speech, and Gemini." />
+    <meta property="og:title" content="ECHO · Drive a robot with your voice" />
+    <meta property="og:description" content="Speak and watch a neon robot move. A voice-driven 3D sandbox." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="scene"></div>
+
+    <!-- HUD -->
+    <div id="hud">
+      <!-- Top bar -->
+      <header class="topbar">
+        <div class="brand">
+          <span class="mark neon-cyan">ECH</span><span class="mark neon-magenta">O</span>
+          <span class="tag">voice-driven</span>
+        </div>
+        <div class="top-controls">
+          <button id="btn-cam" class="pill" title="Camera mode (C)">◎ FOLLOW</button>
+          <button id="btn-voice" class="pill on" title="Robot voice replies">🗣 VOICE</button>
+          <button id="btn-sound" class="pill on" title="Sound effects (M)">♪ SOUND</button>
+          <button id="btn-help" class="pill" title="Commands & controls (?)">? HELP</button>
+        </div>
+      </header>
+
+      <!-- Top-center: big, unmistakable voice-state banner -->
+      <div id="voice-state" class="voice-state off">
+        <span class="vs-visual">
+          <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
+          <span class="vs-spinner"></span>
+        </span>
+        <span class="vs-copy">
+          <strong id="vs-title">MIC OFF</strong>
+          <span id="vs-hint">Click the mic (bottom-left) or press “Start with voice”.</span>
+        </span>
+      </div>
+
+      <!-- Bottom-left: microphone -->
+      <section class="mic-cluster">
+        <button id="mic-orb" class="mic-orb idle" title="Toggle microphone (Space hint shown in help)">
+          <span class="level-ring"></span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+            <path d="M19 10v1a7 7 0 0 1-14 0v-1" />
+            <line x1="12" x2="12" y1="19" y2="22" />
+          </svg>
+        </button>
+        <div class="mic-meta">
+          <div id="mic-status" class="mic-status">Mic off — click the orb to talk</div>
+          <div id="transcript" class="transcript"></div>
+        </div>
+      </section>
+
+      <!-- Bottom-center: command queue (fills as you speak, drains as it runs) -->
+      <div id="queue-strip" class="queue-strip"></div>
+
+      <!-- Bottom-center: telemetry -->
+      <section class="telemetry">
+        <div id="action-label" class="action">IDLE</div>
+        <div class="speed-track"><div id="speed-fill" class="speed-fill"></div></div>
+      </section>
+
+      <!-- Robot speech bubble -->
+      <div id="bot-response" class="bot-response"></div>
+
+      <!-- Slide-in drawer: commands + manual deck -->
+      <aside id="help-drawer" class="drawer">
+        <div class="drawer-head">
+          <h2>CONTROLS</h2>
+          <button id="btn-help-close" class="icon-btn">✕</button>
+        </div>
+
+        <div class="drawer-scroll">
+          <div class="block">
+            <h3>SPEAK OR TYPE</h3>
+            <div class="manual">
+              <input id="cmd-input" type="text" placeholder='Try: "run forward then turn around"' autocomplete="off" />
+              <button id="btn-cmd-send" class="send">SEND</button>
+            </div>
+            <div class="chips">
+              <button class="chip" data-cmd="walk forward">Walk</button>
+              <button class="chip" data-cmd="run forward">Run</button>
+              <button class="chip" data-cmd="walk back 3 steps">Back 3</button>
+              <button class="chip" data-cmd="turn left">Turn L</button>
+              <button class="chip" data-cmd="turn right">Turn R</button>
+              <button class="chip" data-cmd="turn around">About-face</button>
+              <button class="chip" data-cmd="jump">Jump</button>
+              <button class="chip" data-cmd="wave">Wave</button>
+              <button class="chip" data-cmd="dance">Dance</button>
+              <button class="chip" data-cmd="go home">Recenter</button>
+              <button class="chip stop" data-cmd="stop">Stop</button>
+            </div>
+          </div>
+
+          <div class="block">
+            <h3>VOICE EXAMPLES</h3>
+            <ul class="examples">
+              <li>“walk forward” / “go” — keeps moving until you say <b>stop</b></li>
+              <li>“walk five steps”, “back up three” — exact distances</li>
+              <li>“turn left”, “spin around”, “head right”</li>
+              <li>“run”, “faster”, “slower”, “walk”</li>
+              <li>“jump”, “wave”, “dance”, “go home”</li>
+              <li><b>“stop”</b> halts instantly — even mid-word</li>
+            </ul>
+          </div>
+
+          <div class="block">
+            <h3>KEYBOARD</h3>
+            <div class="keys">
+              <span><kbd>W</kbd>/<kbd>↑</kbd> forward</span>
+              <span><kbd>S</kbd>/<kbd>↓</kbd> reverse</span>
+              <span><kbd>A</kbd>/<kbd>←</kbd> steer left</span>
+              <span><kbd>D</kbd>/<kbd>→</kbd> steer right</span>
+              <span><kbd>Shift</kbd> run</span>
+              <span><kbd>Space</kbd> jump</span>
+              <span><kbd>F</kbd> wave</span>
+              <span><kbd>G</kbd> dance</span>
+              <span><kbd>C</kbd> camera</span>
+              <span><kbd>R</kbd> recenter</span>
+              <span><kbd>M</kbd> mute</span>
+              <span><kbd>Esc</kbd> stop</span>
+            </div>
+          </div>
+
+          <div class="block">
+            <h3>LOG</h3>
+            <div id="feed" class="feed"></div>
+          </div>
+        </div>
+      </aside>
+    </div>
+
+    <!-- Splash (also unlocks audio on a user gesture) -->
+    <div id="splash" class="splash">
+      <div class="splash-card">
+        <div class="splash-logo"><span class="neon-cyan">ECH</span><span class="neon-magenta">O</span></div>
+        <p class="splash-sub">Drive a neon robot with your voice.</p>
+        <div class="splash-actions">
+          <button id="btn-start-voice" class="btn-primary">🎙 Start with voice</button>
+          <button id="btn-start-keys" class="btn-ghost">⌨ Keyboard only</button>
+        </div>
+        <p class="splash-hint">Best in Chrome or Edge · Say “walk forward”, then “stop”.</p>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
