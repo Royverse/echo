@@ -1,8 +1,8 @@
 // App wiring: splash -> engine + voice + input -> HUD.
 import './style.css';
-import { GameEngine } from './game.js';
-import { SoundManager } from './audio.js';
-import { VoiceManager } from './speech.js';
+import { GameEngine } from './engine/GameEngine.js';
+import { SoundManager } from './audio/SoundManager.js';
+import { VoiceController } from './voice/VoiceController.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -115,7 +115,7 @@ function showResponse(text) {
 // ---- voice ------------------------------------------------------------------
 let micOn = false;
 let robotSpeaking = false;
-const voice = new VoiceManager({
+const voice = new VoiceController({
   onIntents: (intents, rawText, source) => {
     if (rawText) log('user', `“${rawText}”`);
     const real = intents.filter((i) => i.type !== 'unknown');

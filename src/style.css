@@ -1,4 +1,4 @@
-/* VOX-BOT — HUD styling. The 3D scene owns the screen; the UI floats lightly. */
+/* ECHO — HUD styling. The 3D scene owns the screen; the UI floats lightly. */
 
 :root {
   --bg: #05070c;
@@ -295,6 +295,13 @@ kbd {
 }
 .btn-ghost:hover { border-color: var(--cyan); color: var(--cyan); }
 .splash-hint { color: var(--muted); font-size: 0.78rem; margin-top: 1.6rem; }
+.splash-source {
+  display: inline-flex; align-items: center; gap: 0.4rem;
+  margin-top: 1.1rem; color: var(--muted); opacity: 0.6;
+  font-size: 0.74rem; text-decoration: none;
+  transition: opacity 0.2s ease, color 0.2s ease;
+}
+.splash-source:hover { opacity: 1; color: var(--text); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }

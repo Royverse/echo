@@ -1,10 +1,10 @@
 // Voice layer: recognition -> hybrid parsing -> intents, plus layered TTS.
-import { parseCommand } from './commands.js';
-import { parseIntentWithGemini, synthesizeSpeech, hasApiKey } from './api.js';
+import { parseCommand } from './parser.js';
+import { parseIntentWithGemini, synthesizeSpeech, hasApiKey } from './gemini.js';
 
 const GEMINI_VOICE = 'Puck'; // upbeat; good fit for a sassy bot
 
-export class VoiceManager {
+export class VoiceController {
   constructor(callbacks = {}) {
     this.cb = callbacks; // { onIntents, onStatus, onTranscript, onLevel, onResponse }
     this.recognition = null;

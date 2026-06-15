@@ -1,7 +1,7 @@
 // tests/mechanics.spec.js — momentum locomotion + cinematic follow camera.
 import { test, expect } from '@playwright/test';
 
-test.describe('VOX-BOT mechanics', () => {
+test.describe('ECHO mechanics', () => {
   test.beforeEach(async ({ page }) => {
     page.on('pageerror', (err) => console.log('PAGE ERROR:', err.message));
     await page.goto('/');

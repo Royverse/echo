@@ -3,9 +3,7 @@
 // real ground speed — walk and run emerge from one blended cycle, no foot slide.
 import * as THREE from 'three';
 
-const TAU = Math.PI * 2;
-
-export class RobotCharacter {
+export class Robot {
   constructor() {
     this.mesh = new THREE.Group();
 
@@ -46,7 +44,7 @@ export class RobotCharacter {
     plate.position.set(0, 0.05, 0.31);
     this.torso.add(plate);
 
-    // Glowing core + a little light so bloom has something to grab
+    // Glowing core + a soft point light for a believable self-lit glow
     const core = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 20), glowCyan);
     core.rotation.x = Math.PI / 2;
     core.position.set(0, 0.12, 0.33);

@@ -1,21 +1,28 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+dist-ssr
+
+# Environment & local secrets (Vite loads *.local; never commit keys)
+*.local
+.env
+
 # Logs
 logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
 
-node_modules
-dist
-dist-ssr
-*.local
-test-audio.mjs
-test.mp3
-*.log
+# Netlify CLI state & bundled functions
+.netlify
 
-# Editor directories and files
+# Test artifacts
+playwright-report
+test-results
+blob-report
+playwright/.cache
+
+# Editor / OS
 .vscode/*
 !.vscode/extensions.json
 .idea

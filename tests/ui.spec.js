@@ -1,7 +1,7 @@
 // tests/ui.spec.js — HUD + manual command pipeline (no network: local parser).
 import { test, expect } from '@playwright/test';
 
-test.describe('VOX-BOT HUD', () => {
+test.describe('ECHO HUD', () => {
   test.beforeEach(async ({ page }) => {
     page.on('pageerror', (err) => console.log('PAGE ERROR:', err.message));
     await page.goto('/');

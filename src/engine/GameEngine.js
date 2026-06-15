@@ -1,11 +1,11 @@
-// Core engine: momentum locomotion, cinematic chase camera, bloom, environment.
+// Core engine: scene setup, momentum locomotion, the sequential command queue,
+// the cinematic chase camera, and the per-frame render loop.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
-import { RobotCharacter } from './character.js';
+import { Robot } from './Robot.js';
 
 // --- Locomotion tuning -------------------------------------------------------
 const WALK_SPEED = 3.2;     // units / second
@@ -86,7 +86,8 @@ export class GameEngine {
     this.renderer.toneMappingExposure = 1.25;
     this.container.appendChild(this.renderer.domElement);
 
-    // Post-processing: removed bloom to reduce neon aesthetic.
+    // Post-processing: ACES tone-mapped output. (Bloom intentionally omitted
+    // for a cleaner, less neon look; re-add an UnrealBloomPass here to bring it back.)
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
     this.composer.addPass(new OutputPass());
@@ -198,7 +199,7 @@ export class GameEngine {
   }
 
   spawnRobot() {
-    this.robot = new RobotCharacter();
+    this.robot = new Robot();
     this.scene.add(this.robot.mesh);
     this.snapCamera();
   }
@@ -599,6 +600,5 @@ export class GameEngine {
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(w, h);
     this.composer.setSize(w, h);
-    if (this.bloom) this.bloom.setSize(w, h);
   }
 }
