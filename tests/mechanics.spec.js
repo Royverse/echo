@@ -12,8 +12,9 @@ test.describe('ECHO mechanics', () => {
   test('counted walk moves forward then settles to a stop', async ({ page }) => {
     await page.evaluate(() => window.gameEngine.runIntents([{ type: 'move', dir: 'forward', steps: 4 }]));
 
-    // wait until the move goal completes and speed returns to ~0
-    await page.waitForFunction(() => window.gameEngine.speed === 0 && !window.gameEngine.moveGoal, null, { timeout: 15000 });
+    // wait until the move goal completes and speed returns to ~0 (generous for
+    // slow-motion sim under low headless frame rates)
+    await page.waitForFunction(() => window.gameEngine.speed === 0 && !window.gameEngine.moveGoal, null, { timeout: 40000 });
 
     const z = await page.evaluate(() => window.gameEngine.robot.mesh.position.z);
     // 4 steps * 1.6 units ≈ 6.4 forward (+Z at heading 0)
@@ -22,7 +23,9 @@ test.describe('ECHO mechanics', () => {
 
   test('turn around rotates ~180° and the camera follows behind', async ({ page }) => {
     await page.evaluate(() => window.gameEngine.runIntents([{ type: 'turn', dir: 'around' }]));
-    await page.waitForFunction(() => !window.gameEngine.turnGoal, null, { timeout: 8000 });
+    // Generous: headless software-WebGL can run ~5 FPS, and the dt-capped sim
+    // advances in slow-motion at low frame rates (the turn itself is correct).
+    await page.waitForFunction(() => !window.gameEngine.turnGoal, null, { timeout: 40000 });
     // let the chase camera settle behind the new facing
     await page.waitForTimeout(1200);
 
@@ -48,8 +51,9 @@ test.describe('ECHO mechanics', () => {
   test('diagonal walk turns first then moves forward', async ({ page }) => {
     await page.evaluate(() => window.gameEngine.runIntents([{ type: 'move', dir: 'forward-left', steps: 3 }]));
     
-    // Wait for the sequence to complete (turn then move)
-    await page.waitForFunction(() => window.gameEngine.speed === 0 && !window.gameEngine.moveGoal && !window.gameEngine.turnGoal, null, { timeout: 15000 });
+    // Wait for the sequence to complete (turn then move). Generous timeout: at
+    // ~5 FPS in headless software-WebGL the dt-capped sim runs in slow motion.
+    await page.waitForFunction(() => window.gameEngine.speed === 0 && !window.gameEngine.moveGoal && !window.gameEngine.turnGoal, null, { timeout: 40000 });
     
     const state = await page.evaluate(() => ({
       heading: window.gameEngine.heading,

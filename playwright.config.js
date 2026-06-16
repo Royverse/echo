@@ -3,8 +3,10 @@ import { defineConfig, devices } from '@playwright/test';
 
 export default defineConfig({
   testDir: './tests',
-  /* Maximum time one test can run for. */
-  timeout: 30 * 1000,
+  /* Maximum time one test can run for. Headroom for cold-start dep optimization
+     and slow-motion sim under low headless frame rates (software WebGL can drop
+     to ~2 FPS under load; on a real GPU these tests finish in well under 2s). */
+  timeout: 90 * 1000,
   expect: {
     timeout: 5000
   },
@@ -35,10 +37,13 @@ export default defineConfig({
     },
   ],
 
-  /* Run your local dev server before starting the tests */
+  /* Run your local dev server before starting the tests. Bind 5174 explicitly so
+     Playwright's own server lands on the URL it waits for (a bare `npm run dev`
+     defaults Vite to 5173 and the wait times out). */
   webServer: {
-    command: 'npm run dev',
+    command: 'npm run dev -- --port 5174 --strictPort',
     url: 'http://localhost:5174',
     reuseExistingServer: true,
+    timeout: 120000,
   },
 });

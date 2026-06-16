@@ -21,6 +21,12 @@ const queueStrip = $('queue-strip');
 const voiceState = $('voice-state');
 const vsTitle = $('vs-title');
 const vsHint = $('vs-hint');
+const juggleCounter = $('juggle-counter');
+const jcValue = $('jc-value');
+const ballStateEl = $('ball-state');
+const sbGoals = $('sb-goals');
+const sbSaves = $('sb-saves');
+const flashEl = $('flash');
 
 // Central, unmistakable communication of what the system wants from the user.
 let micState = 'off';   // 'off' | 'listening' | 'processing'
@@ -49,14 +55,41 @@ const sound = new SoundManager();
 
 // ---- engine -----------------------------------------------------------------
 let lastAction = '';
+let lastBallState = '';
+let lastFlash = null;
+const BALL_STATE_TEXT = { controlled: 'ON THE BALL', loose: 'LOOSE BALL', shot: 'SHOT!', saved: 'SAVED!', goal: 'GOAL!' };
 const engine = new GameEngine(scene, sound, {
-  onTelemetry: ({ speed01, action }) => {
+  onTelemetry: ({ speed01, action, juggleStreak, possession, ballState, score, flash }) => {
     speedFill.style.width = `${Math.round(speed01 * 100)}%`;
     if (action !== lastAction) {
       lastAction = action;
       actionLabel.textContent = action;
       actionLabel.style.color = action === 'IDLE' ? 'var(--text)'
-        : /DANC|WAV/.test(action) ? 'var(--magenta)' : 'var(--cyan)';
+        : /DANC|WAV|JUGGL/.test(action) ? 'var(--magenta)' : 'var(--cyan)';
+    }
+    if (juggleStreak > 0) {
+      jcValue.textContent = juggleStreak;
+      juggleCounter.classList.add('show');
+    } else {
+      juggleCounter.classList.remove('show');
+    }
+    // possession / ball state
+    if (ballState !== lastBallState) {
+      lastBallState = ballState;
+      ballStateEl.textContent = BALL_STATE_TEXT[ballState] || 'LOOSE BALL';
+      ballStateEl.className = `ball-state ${possession === 'robot' ? 'have' : ballState}`;
+    }
+    // scoreboard
+    if (score) { sbGoals.textContent = score.goals; sbSaves.textContent = score.saves; }
+    // momentary GOAL! / SAVED! banner
+    if (flash !== lastFlash) {
+      lastFlash = flash;
+      if (flash) {
+        flashEl.textContent = flash;
+        flashEl.className = `flash show ${flash === 'GOAL!' ? 'goal' : 'save'}`;
+      } else {
+        flashEl.className = 'flash';
+      }
     }
   },
   onQueueChange: (items) => {
@@ -88,6 +121,20 @@ function describeIntents(intents) {
     if (i.type === 'move') return `move ${i.dir}${i.steps ? ' ' + i.steps : ''}`;
     if (i.type === 'turn') return `turn ${i.dir}`;
     if (i.type === 'speed') return i.level;
+    if (i.type === 'kick') {
+      if (i.target) return `shoot ${i.target}${i.curve ? `, curl ${i.curve}` : ''}`;
+      const bits = [i.power || 'drive'];
+      if (i.loft && i.loft !== 'low') bits.push(i.loft);
+      if (i.curve) bits.push(`curl ${i.curve}`);
+      if (i.aim) bits.push(`aim ${i.aim}`);
+      return `kick (${bits.join(', ')})`;
+    }
+    if (i.type === 'dribble') return `dribble ${i.dir}${i.steps ? ' ' + i.steps : ''}`;
+    if (i.type === 'juggle') return 'juggle';
+    if (i.type === 'trap') return 'trap';
+    if (i.type === 'shield') return 'shield';
+    if (i.type === 'knock') return 'knock past';
+    if (i.type === 'win') return 'win the ball';
     return i.type;
   }).join(' + ');
 }
@@ -174,7 +221,7 @@ const voice = new VoiceController({
 function enter(withVoice) {
   sound.init();
   sound.resume();
-  sound.startAmbience();
+  // Ambient drone intentionally not started — it read as a constant buzz.
   splash.classList.add('hide');
   setTimeout(() => (splash.style.display = 'none'), 500);
   if (withVoice) voice.start();
@@ -265,8 +312,10 @@ window.addEventListener('keydown', (e) => {
 
   switch (k) {
     case ' ': engine.doJump(); e.preventDefault(); break;
+    case 'e': engine.runIntents([{ type: 'kick' }]); break;
     case 'f': engine.runIntents([{ type: 'wave' }]); break;
     case 'g': engine.runIntents([{ type: 'dance' }]); break;
+    case 'j': engine.runIntents([{ type: 'juggle' }]); break;
     case 'r': engine.runIntents([{ type: 'reset' }]); break;
     case 'c': toggleCamera(); break;
     case 'm': toggleMute(); break;

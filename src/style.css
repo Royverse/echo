@@ -202,6 +202,59 @@ html, body {
   box-shadow: 0 0 12px rgba(0, 229, 255, 0.6);
   transition: width 0.08s linear;
 }
+.juggle-counter {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-family: var(--font-display);
+  opacity: 0; transform: translateY(4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  pointer-events: none;
+}
+.juggle-counter.show { opacity: 1; transform: translateY(0); }
+.juggle-counter .jc-ball { font-size: 1rem; }
+.juggle-counter b {
+  font-size: 1.4rem; font-weight: 900; color: var(--good);
+  text-shadow: 0 0 14px rgba(0, 230, 118, 0.5);
+}
+.juggle-counter .jc-label {
+  font-size: 0.6rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted);
+}
+
+/* ---------------------------------------------------------- scoreboard */
+.scoreboard {
+  position: absolute; top: 0.6rem; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.7rem; z-index: 6; pointer-events: none;
+  background: var(--glass); border: 1px solid var(--border); border-radius: 999px;
+  padding: 0.28rem 0.95rem; backdrop-filter: blur(8px);
+  font-family: var(--font-display);
+}
+.sb-cell { display: flex; align-items: center; gap: 0.32rem; }
+.sb-ico { font-size: 0.9rem; }
+.scoreboard b { font-size: 1.05rem; font-weight: 900; color: var(--good); }
+#sb-saves { color: #ffd54a; }
+.sb-lbl { font-size: 0.52rem; letter-spacing: 2px; text-transform: uppercase; color: var(--muted); }
+.sb-div { width: 1px; height: 15px; background: var(--border); }
+
+/* possession / ball state line in the telemetry cluster */
+.ball-state {
+  font-family: var(--font-display); font-weight: 700; letter-spacing: 2px;
+  font-size: 0.7rem; color: var(--muted); transition: color 0.2s ease, text-shadow 0.2s ease;
+}
+.ball-state.have { color: var(--good); text-shadow: 0 0 10px rgba(0, 230, 118, 0.45); }
+.ball-state.shot { color: var(--cyan); }
+.ball-state.saved { color: #ffd54a; }
+.ball-state.goal { color: var(--good); }
+
+/* momentary GOAL! / SAVED! banner */
+.flash {
+  position: absolute; top: 33%; left: 50%; z-index: 8; pointer-events: none;
+  transform: translate(-50%, -50%) scale(0.8);
+  font-family: var(--font-display); font-weight: 900; letter-spacing: 5px;
+  font-size: clamp(2.2rem, 8vw, 3.6rem); opacity: 0;
+  transition: opacity 0.2s ease, transform 0.35s cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+.flash.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+.flash.goal { color: var(--good); text-shadow: 0 0 32px rgba(0, 230, 118, 0.75); }
+.flash.save { color: #ffd54a; text-shadow: 0 0 28px rgba(255, 213, 74, 0.65); }
 
 /* --------------------------------------------------------- bot response */
 .bot-response {
@@ -253,6 +306,12 @@ html, body {
 .chip:hover { border-color: var(--cyan); color: var(--cyan); }
 .chip.stop { border-color: rgba(255, 45, 120, 0.4); color: var(--magenta); }
 .chip.stop:hover { background: var(--magenta); color: #fff; }
+.chips-ball { margin-top: 0.45rem; }
+.chip.ball { border-color: rgba(0, 230, 118, 0.32); color: var(--good); }
+.chip.ball:hover { border-color: var(--good); color: var(--good); box-shadow: 0 0 12px rgba(0, 230, 118, 0.28); }
+.chips-shot { margin-top: 0.35rem; }
+.chip.shot { border-color: rgba(255, 213, 74, 0.32); color: #ffd54a; }
+.chip.shot:hover { border-color: #ffd54a; color: #ffd54a; box-shadow: 0 0 12px rgba(255, 213, 74, 0.25); }
 
 .examples { list-style: none; display: flex; flex-direction: column; gap: 0.45rem; font-size: 0.82rem; color: var(--muted); line-height: 1.4; }
 .examples b { color: var(--text); }

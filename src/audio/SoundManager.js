@@ -119,6 +119,51 @@ export class SoundManager {
     this._tone('square', 660, 880, 0.08, 0.05);
   }
 
+  // Boot impact — a punchy low thump plus a leathery noise burst. `power` 0..1
+  // scales the weight and brightness so a tap and a blast sound different.
+  playKick(power = 0.6) {
+    if (!this._ready()) return;
+    const p = Math.max(0.15, Math.min(1, power));
+    this._tone('sine', 150 + p * 90, 50, 0.16 + p * 0.06, 0.18 + p * 0.22);
+    this._noise(0.05 + p * 0.03, 900 + p * 1600, 0.08 + p * 0.12, 'bandpass');
+  }
+
+  // First touch — a soft, warm tap when the robot brings the ball under control.
+  playTouch() {
+    if (!this._ready()) return;
+    this._tone('sine', 240, 150, 0.06, 0.05);
+    this._noise(0.02, 800, 0.02, 'lowpass');
+  }
+
+  // Soft tick when the ball bounces; pitch rises a touch with bounce strength.
+  playBounce(strength = 0.5) {
+    if (!this._ready()) return;
+    const s = Math.max(0.1, Math.min(1, strength));
+    this._tone('sine', 220 + s * 160, 120, 0.07, 0.04 + s * 0.06);
+    this._noise(0.025, 1400, 0.03 * s);
+  }
+
+  // Tackle — a scuffly low thud as the defender nicks the ball away.
+  playTackle() {
+    if (!this._ready()) return;
+    this._tone('sine', 120, 60, 0.12, 0.16);
+    this._noise(0.09, 500, 0.12, 'lowpass');
+  }
+
+  // Keeper save — a firm gloved punch: a short thump plus a bright slap.
+  playSave() {
+    if (!this._ready()) return;
+    this._tone('sine', 200, 90, 0.12, 0.16);
+    this._noise(0.06, 2200, 0.1, 'bandpass');
+  }
+
+  // Net ripple — a brief filtered hiss for when the ball hits the goal net.
+  playNet() {
+    if (!this._ready()) return;
+    this._noise(0.18, 2600, 0.06, 'bandpass');
+    this._tone('triangle', 520, 360, 0.12, 0.03);
+  }
+
   playError() {
     if (!this._ready()) return;
     this._tone('sawtooth', 130, 70, 0.25, 0.09);
