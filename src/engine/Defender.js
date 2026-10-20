@@ -1,31 +1,47 @@
-// Procedural outfield defender: pressures the ball-carrier from the goal side,
-// lunges to tackle when close, and is beatable — outpace him, shield the ball, or
-// knock it past. When he wins it he just boots it upfield (no dribbling AI), so
-// the ball goes loose and the player can win it back. Asset-free, like Robot.js.
+// Procedural outfield defender & opponent agent with full FSM:
+// JOCKEY -> PRESS -> COMMIT_TACKLE (snapshot target) -> RECOVER,
+// plus CARRY, SHOOT, and COVER_LANE with shot-blocking hitbox.
 import * as THREE from 'three';
+import { Config } from '../core/Config.js';
+import { events } from '../core/EventBus.js';
 
-const DEF_SPEED = 4.6;         // chase pace — slower than a run (7) so pace beats him
-const TACKLE_RANGE = 1.4;
-const LUNGE_TIME = 0.32;
-const TACKLE_COOLDOWN = 1.1;
-const PRESSURE_RANGE = 3.0;    // within this of the carrier → flags pressure (amber ring)
+const DEF_SPEED = Config.DEFENDER.SPEED;
+const TACKLE_RANGE = Config.DEFENDER.TACKLE_RANGE;
+const LUNGE_TIME = Config.DEFENDER.LUNGE_TIME;
+const TACKLE_COOLDOWN = Config.DEFENDER.TACKLE_COOLDOWN;
+const PRESSURE_RANGE = Config.DEFENDER.PRESSURE_RANGE;
+const JOCKEY_DIST = Config.DEFENDER.JOCKEY_DIST;
+
+const _v1 = new THREE.Vector3();
+const _snapshotTarget = new THREE.Vector3();
 
 export class Defender {
-  constructor(goal) {
+  constructor(goal, isSecondOpponent = false) {
     this.goal = goal;
-    this.homeZ = goal.z - 9;
+    this.isSecondOpponent = isSecondOpponent;
+    this.homeZ = goal.z - (isSecondOpponent ? 12 : 9);
+    this.homeX = isSecondOpponent ? 4.0 : -2.0;
+
+    this.fsmState = 'JOCKEY'; // 'JOCKEY' | 'PRESS' | 'COMMIT_TACKLE' | 'RECOVER' | 'CARRY' | 'SHOOT' | 'COVER_LANE'
     this.cooldown = 0;
     this.lungeT = 0;
+    this.recoverT = 0;
     this.speedNow = 0;
     this.gait = 0;
+    this.stunnedT = 0;
+
+    // Shot blocking cylinder (r = 0.5, h = 1.9)
+    this.blockRadius = 0.5;
+    this.blockHeight = 1.9;
 
     this.mesh = new THREE.Group();
     this.build();
-    this.mesh.position.set(0, 0, this.homeZ);
+    this.reset(this.homeX);
   }
 
   build() {
-    const kit = new THREE.MeshStandardMaterial({ color: 0xe0463c, roughness: 0.5, metalness: 0.1 });
+    const kitColor = this.isSecondOpponent ? 0xd03060 : 0xe0463c;
+    const kit = new THREE.MeshStandardMaterial({ color: kitColor, roughness: 0.5, metalness: 0.1 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x2a2330, roughness: 0.6 });
     const skin = new THREE.MeshStandardMaterial({ color: 0xcf9b6a, roughness: 0.6 });
 
@@ -60,10 +76,31 @@ export class Defender {
     this.armR = buildArm(1);
   }
 
-  reset(x = 0) {
-    this.cooldown = 0; this.lungeT = 0;
+  reset(x = this.homeX) {
+    this.cooldown = 0;
+    this.lungeT = 0;
+    this.recoverT = 0;
+    this.stunnedT = 0;
+    this.fsmState = 'JOCKEY';
     this.mesh.position.set(x, 0, this.homeZ);
     this.body.rotation.set(0, 0, 0);
+  }
+
+  stun(duration = 0.8) {
+    this.stunnedT = duration;
+    this.lungeT = 0;
+    this.fsmState = 'RECOVER';
+  }
+
+  /**
+   * Check if an in-flight ball intersects the defender's blocking cylinder.
+   * @param {THREE.Vector3} ballPos 
+   * @returns {boolean}
+   */
+  checkShotBlock(ballPos) {
+    const me = this.mesh.position;
+    const distHoriz = Math.hypot(ballPos.x - me.x, ballPos.z - me.z);
+    return distHoriz < this.blockRadius + 0.36 && ballPos.y < this.blockHeight;
   }
 
   _moveToward(tx, tz, speed, dt) {
@@ -73,7 +110,8 @@ export class Defender {
     const stepLen = speed * dt;
     if (d > 0.02) {
       const s = Math.min(stepLen, d);
-      me.x += (dx / d) * s; me.z += (dz / d) * s;
+      me.x += (dx / d) * s;
+      me.z += (dz / d) * s;
     }
     this.speedNow = d > 0.02 ? speed : THREE.MathUtils.lerp(this.speedNow, 0, 0.2);
   }
@@ -90,42 +128,103 @@ export class Defender {
     const b = ctx.ball.position;
     const me = this.mesh.position;
     const toBall = Math.hypot(b.x - me.x, b.z - me.z);
+
     this.cooldown = Math.max(0, this.cooldown - dt);
-
-    let pose = 'run';
-    ctx.setPressure(ctx.possession === 'robot' && toBall < PRESSURE_RANGE);
-
-    if (this.lungeT > 0) {
-      // Committed lunge: drive at the ball; resolve the tackle when it ends.
-      this.lungeT -= dt;
-      this._moveToward(b.x, b.z, DEF_SPEED * 1.6, dt);
-      pose = 'lunge';
-      if (this.lungeT <= 0) {
-        const reBall = Math.hypot(b.x - me.x, b.z - me.z);
-        if (ctx.possession === 'robot' && !ctx.shielding && reBall < TACKLE_RANGE + 0.35) {
-          ctx.onTackle();
-        }
-        this.cooldown = TACKLE_COOLDOWN;
-      }
-    } else if (ctx.possession === 'robot') {
-      // Pressure: aim for a point a touch goal-side of the ball, then lunge in range.
-      this._moveToward(b.x, b.z + 0.9, DEF_SPEED, dt);
-      if (toBall < TACKLE_RANGE && this.cooldown <= 0) this.lungeT = LUNGE_TIME;
-      pose = toBall < PRESSURE_RANGE ? 'press' : 'run';
-    } else {
-      // Ball loose / robot has no possession: hold a goal-side screening position.
-      const hz = Math.min(this.goal.z - 5, (b.z + this.goal.z) / 2);
-      this._moveToward(b.x * 0.5, hz, DEF_SPEED * 0.75, dt);
-      pose = this.speedNow > 0.2 ? 'run' : 'idle';
+    if (this.stunnedT > 0) {
+      this.stunnedT -= dt;
+      this.animate(dt, 'stunned');
+      return;
     }
 
-    this._face(b.x, b.z, dt);
-    this.animate(dt, pose);
+    ctx.setPressure(ctx.possession === 'robot' && toBall < PRESSURE_RANGE);
+
+    const goalZ = ctx.goalZ !== undefined ? ctx.goalZ : (ctx.goal ? ctx.goal.z : (this.goal ? this.goal.z : 23));
+
+    // State Machine Evaluation
+    switch (this.fsmState) {
+      case 'COMMIT_TACKLE': {
+        this.lungeT -= dt;
+        // Drive toward snapshot target committed at start of tackle (so feints evade him!)
+        this._moveToward(_snapshotTarget.x, _snapshotTarget.z, DEF_SPEED * 1.6, dt);
+        this.animate(dt, 'lunge');
+
+        if (this.lungeT <= 0) {
+          const reBall = Math.hypot(b.x - me.x, b.z - me.z);
+          if (ctx.possession === 'robot' && !ctx.shielding && reBall < TACKLE_RANGE + 0.35) {
+            ctx.onTackle();
+            events.emit('tackle_won', { tackler: 'defender', cleanly: true });
+          } else if (ctx.possession === 'robot') {
+            events.emit('tackle_lost', { tackler: 'defender', reason: 'feint' });
+          }
+          this.fsmState = 'RECOVER';
+          this.recoverT = Config.DEFENDER.RECOVER_LOCKOUT;
+          this.cooldown = TACKLE_COOLDOWN;
+        }
+        break;
+      }
+
+      case 'RECOVER': {
+        this.recoverT -= dt;
+        this._moveToward(me.x, me.z + 1.0, DEF_SPEED * 0.4, dt);
+        this.animate(dt, 'idle');
+        if (this.recoverT <= 0) {
+          this.fsmState = ctx.possession === 'robot' ? 'JOCKEY' : 'COVER_LANE';
+        }
+        break;
+      }
+
+      case 'PRESS': {
+        this._moveToward(b.x, b.z + 0.5, DEF_SPEED, dt);
+        this._face(b.x, b.z, dt);
+        this.animate(dt, 'run');
+
+        if (toBall < TACKLE_RANGE && this.cooldown <= 0) {
+          // Commit to snapshot position of the ball at this instant
+          _snapshotTarget.copy(b);
+          this.fsmState = 'COMMIT_TACKLE';
+          this.lungeT = LUNGE_TIME;
+        } else if (toBall > PRESSURE_RANGE + 1.5) {
+          this.fsmState = 'JOCKEY';
+        }
+        break;
+      }
+
+      case 'JOCKEY': {
+        // Hold distance from carrier, mirror lateral movement, stay goal-side
+        const targetZ = Math.max(goalZ - 16, b.z + JOCKEY_DIST);
+        const targetX = b.x * 0.85;
+        this._moveToward(targetX, targetZ, DEF_SPEED * 0.8, dt);
+        this._face(b.x, b.z, dt);
+        this.animate(dt, 'press');
+
+        if (toBall < TACKLE_RANGE + 0.4 && this.cooldown <= 0) {
+          _snapshotTarget.copy(b);
+          this.fsmState = 'COMMIT_TACKLE';
+          this.lungeT = LUNGE_TIME;
+        } else if (toBall < PRESSURE_RANGE * 0.75) {
+          this.fsmState = 'PRESS';
+        }
+        break;
+      }
+
+      case 'COVER_LANE':
+      default: {
+        // Stand on the direct line between ball and goal center
+        const hz = Math.min(goalZ - 5, (b.z + goalZ) * 0.5);
+        this._moveToward(b.x * 0.5, hz, DEF_SPEED * 0.75, dt);
+        this._face(b.x, b.z, dt);
+        this.animate(dt, this.speedNow > 0.2 ? 'run' : 'idle');
+
+        if (ctx.possession === 'robot') {
+          this.fsmState = toBall < PRESSURE_RANGE ? 'PRESS' : 'JOCKEY';
+        }
+        break;
+      }
+    }
   }
 
   animate(dt, pose) {
     if (pose === 'lunge') {
-      // Stretch a leg out toward the ball, lean in.
       this.hipR.rotation.x = THREE.MathUtils.lerp(this.hipR.rotation.x, -1.1, 0.3);
       this.hipL.rotation.x = THREE.MathUtils.lerp(this.hipL.rotation.x, 0.5, 0.3);
       this.body.rotation.x = THREE.MathUtils.lerp(this.body.rotation.x, 0.3, 0.3);
@@ -133,6 +232,12 @@ export class Defender {
       this.armR.rotation.z = THREE.MathUtils.lerp(this.armR.rotation.z, -0.8, 0.3);
       return;
     }
+    if (pose === 'stunned') {
+      this.body.rotation.z = Math.sin(Date.now() * 0.02) * 0.2;
+      this.body.rotation.x = -0.2;
+      return;
+    }
+    this.body.rotation.z = 0;
     this.body.rotation.x = THREE.MathUtils.lerp(this.body.rotation.x, pose === 'press' ? 0.12 : 0, 0.2);
     this.gait += this.speedNow * 1.7 * dt;
     const sw = Math.min(1, this.speedNow / DEF_SPEED) * 0.7;

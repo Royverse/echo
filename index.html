@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-    <title>ECHO · Drive a robot with your voice</title>
+    <title>ECHO · Voice-Driven 3D Arcade Football</title>
 
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
@@ -16,11 +16,11 @@
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
 
-    <meta name="description" content="ECHO — drive a procedurally-animated neon robot through a sandbox using just your voice. Built with Three.js, Web Speech, and Gemini." />
-    <meta property="og:title" content="ECHO · Drive a robot with your voice" />
-    <meta property="og:description" content="Speak and watch a neon robot move. A voice-driven 3D sandbox." />
+    <meta name="description" content="ECHO — voice-driven 3D arcade street football sandbox. Direct your team in continuous real-time matches using your voice." />
+    <meta property="og:title" content="ECHO · Voice-Driven 3D Arcade Football" />
+    <meta property="og:description" content="Command a live street-football squad with your voice. Never goes dead." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
   </head>
@@ -33,9 +33,14 @@
       <header class="topbar">
         <div class="brand">
           <span class="mark neon-cyan">ECH</span><span class="mark neon-magenta">O</span>
-          <span class="tag">voice-driven</span>
+          <span class="tag">CAPTAIN MODE</span>
         </div>
         <div class="top-controls">
+          <div id="flow-meter" class="flow-meter" title="Flow Chain Multiplier">
+            <span class="flow-flame">🔥</span>
+            <span id="flow-tier" class="flow-tier">COOL 1.0x</span>
+            <div class="flow-track"><div id="flow-fill" class="flow-fill"></div></div>
+          </div>
           <button id="btn-cam" class="pill" title="Camera mode (C)">◎ FOLLOW</button>
           <button id="btn-voice" class="pill on" title="Robot voice replies">🗣 VOICE</button>
           <button id="btn-sound" class="pill on" title="Sound effects (M)">♪ SOUND</button>
@@ -45,15 +50,21 @@
 
       <!-- Top-center: football scoreboard -->
       <div id="scoreboard" class="scoreboard">
-        <span class="sb-cell"><span class="sb-ico">⚽</span><b id="sb-goals">0</b><span class="sb-lbl">goals</span></span>
+        <span class="sb-cell"><span class="sb-ico">⚽</span><b id="sb-goals">0</b><span class="sb-lbl">player</span></span>
         <span class="sb-div"></span>
         <span class="sb-cell"><span class="sb-ico">🧤</span><b id="sb-saves">0</b><span class="sb-lbl">saves</span></span>
+      </div>
+
+      <!-- Standing Order Chip (Active autonomous order) -->
+      <div id="order-chip" class="order-chip hidden">
+        <span id="order-icon" class="order-icon">⚡</span>
+        <span id="order-label" class="order-label">CARRY → GOAL</span>
       </div>
 
       <!-- Center: momentary GOAL! / SAVED! banner -->
       <div id="flash" class="flash"></div>
 
-      <!-- Top-center: big, unmistakable voice-state banner -->
+      <!-- Voice state banner -->
       <div id="voice-state" class="voice-state off">
         <span class="vs-visual">
           <span class="eq"><i></i><i></i><i></i><i></i><i></i></span>
@@ -61,13 +72,23 @@
         </span>
         <span class="vs-copy">
           <strong id="vs-title">MIC OFF</strong>
-          <span id="vs-hint">Click the mic (bottom-left) or press “Start with voice”.</span>
+          <span id="vs-hint">Click the mic or hold Space to talk.</span>
         </span>
+      </div>
+
+      <!-- Dynamic Contextual Suggestion Chips -->
+      <div id="suggestion-strip" class="suggestion-strip">
+        <span class="sugg-hint">TRY:</span>
+        <div id="suggestion-chips" class="suggestion-chips">
+          <button class="chip sugg-chip" data-cmd="carry forward">Carry</button>
+          <button class="chip sugg-chip" data-cmd="feint left">Feint</button>
+          <button class="chip sugg-chip" data-cmd="shoot top corner">Top Bins</button>
+        </div>
       </div>
 
       <!-- Bottom-left: microphone -->
       <section class="mic-cluster">
-        <button id="mic-orb" class="mic-orb idle" title="Toggle microphone (Space hint shown in help)">
+        <button id="mic-orb" class="mic-orb idle" title="Toggle microphone (Space for Push-to-Talk)">
           <span class="level-ring"></span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
@@ -76,12 +97,12 @@
           </svg>
         </button>
         <div class="mic-meta">
-          <div id="mic-status" class="mic-status">Mic off — click the orb to talk</div>
+          <div id="mic-status" class="mic-status">Mic off — click the orb or hold Space</div>
           <div id="transcript" class="transcript"></div>
         </div>
       </section>
 
-      <!-- Bottom-center: command queue (fills as you speak, drains as it runs) -->
+      <!-- Bottom-center: command queue -->
       <div id="queue-strip" class="queue-strip"></div>
 
       <!-- Bottom-center: telemetry -->
@@ -102,7 +123,7 @@
       <!-- Slide-in drawer: commands + manual deck -->
       <aside id="help-drawer" class="drawer">
         <div class="drawer-head">
-          <h2>CONTROLS</h2>
+          <h2>CAPTAIN CONTROLS</h2>
           <button id="btn-help-close" class="icon-btn">✕</button>
         </div>
 
@@ -110,9 +131,11 @@
           <div class="block">
             <h3>SPEAK OR TYPE</h3>
             <div class="manual">
-              <input id="cmd-input" type="text" placeholder='Try: "run forward then turn around"' autocomplete="off" />
+              <input id="cmd-input" type="text" placeholder='Try: "carry... shield... shoot far post"' autocomplete="off" />
               <button id="btn-cmd-send" class="send">SEND</button>
             </div>
+            
+            <h4 class="sub-head">MOTION</h4>
             <div class="chips">
               <button class="chip" data-cmd="walk forward">Walk</button>
               <button class="chip" data-cmd="run forward">Run</button>
@@ -126,64 +149,72 @@
               <button class="chip" data-cmd="go home">Recenter</button>
               <button class="chip stop" data-cmd="stop">Stop</button>
             </div>
-            <div class="chips chips-ball">
-              <button class="chip ball" data-cmd="dribble forward">Dribble</button>
-              <button class="chip ball" data-cmd="shield the ball">Shield</button>
-              <button class="chip ball" data-cmd="knock it past him">Knock on</button>
-              <button class="chip ball" data-cmd="win the ball back">Win it</button>
-              <button class="chip ball" data-cmd="pass it">Pass</button>
-              <button class="chip ball" data-cmd="do keepie uppies">Juggle</button>
+
+            <h4 class="sub-head">STANDING ORDERS</h4>
+            <div class="chips chips-orders">
+              <button class="chip order-btn" data-cmd="carry">Carry ⚡</button>
+              <button class="chip order-btn" data-cmd="hold up the ball">Hold 🛡️</button>
+              <button class="chip order-btn" data-cmd="press and win it">Press 🎯</button>
+              <button class="chip order-btn" data-cmd="screen the goal">Screen 🧱</button>
+              <button class="chip order-btn" data-cmd="support">Support 🤝</button>
             </div>
+
+            <h4 class="sub-head">STREET TRICKS</h4>
+            <div class="chips chips-ball">
+              <button class="chip trick-btn" data-cmd="feint left">Feint L</button>
+              <button class="chip trick-btn" data-cmd="feint right">Feint R</button>
+              <button class="chip trick-btn" data-cmd="rainbow flick">Flick 🌈</button>
+              <button class="chip trick-btn" data-cmd="one two">1-2 Wall ⚽</button>
+              <button class="chip trick-btn" data-cmd="nutmeg">Nutmeg</button>
+              <button class="chip trick-btn" data-cmd="bicycle kick">Bicycle 🤸</button>
+            </div>
+
+            <h4 class="sub-head">SQUAD VERBS</h4>
+            <div class="chips chips-squad">
+              <button class="chip squad-btn" data-cmd="overlap right">Overlap R</button>
+              <button class="chip squad-btn" data-cmd="make a run">Make Run</button>
+              <button class="chip squad-btn" data-cmd="cross it">Cross</button>
+              <button class="chip squad-btn" data-cmd="pass to Nova">To Nova</button>
+            </div>
+
+            <h4 class="sub-head">FINISHING</h4>
             <div class="chips chips-shot">
+              <button class="chip shot" data-cmd="shoot">Smart Shot</button>
               <button class="chip shot" data-cmd="shoot top left corner">Top L</button>
               <button class="chip shot" data-cmd="shoot top right corner">Top R</button>
-              <button class="chip shot" data-cmd="finish bottom left">Bot L</button>
-              <button class="chip shot" data-cmd="finish bottom right">Bot R</button>
-              <button class="chip shot" data-cmd="curl it into the top corner">Curl top</button>
+              <button class="chip shot" data-cmd="curl it into the top corner">Curl Top</button>
+              <button class="chip shot" data-cmd="knuckleball">Knuckle</button>
               <button class="chip shot" data-cmd="blast it down the middle">Blast</button>
+              <button class="chip stop" data-cmd="stop">STOP</button>
             </div>
           </div>
 
           <div class="block">
-            <h3>VOICE EXAMPLES</h3>
+            <h3>VOICE TACTICS</h3>
             <ul class="examples">
-              <li>“walk forward” / “go” — keeps moving until you say <b>stop</b></li>
-              <li>“walk five steps”, “back up three” — exact distances</li>
-              <li>“turn left”, “spin around”, “head right”</li>
-              <li>“run”, “faster”, “slower”, “walk”</li>
-              <li>“jump”, “wave”, “dance”, “go home”</li>
-              <li><b>“stop”</b> halts instantly — even mid-word</li>
+              <li><b>“carry... shoot far post”</b> — continuous flow; doesn't stop.</li>
+              <li><b>“feint left”, “rainbow flick”</b> — bypass lunging defenders.</li>
+              <li><b>“one two”</b> — wall pass drone return pass into your run.</li>
+              <li><b>“overlap right then cross”</b> — squad play with Nova.</li>
+              <li><b>“call that blitz”</b> — saves compound play as custom macro!</li>
+              <li><b>“stop” / “freeze”</b> — instant purge of all actions & orders.</li>
             </ul>
           </div>
 
           <div class="block">
-            <h3>⚽ FOOTBALL</h3>
-            <ul class="examples">
-              <li><b>Possession</b> — you keep the ball through any move. “dribble forward”, “go left”, “turn around” all carry it.</li>
-              <li><b>Shoot a corner</b> — “shoot <b>top left</b>”, “finish <b>bottom right</b>”, “far post”, “top bins” — placed past the keeper.</li>
-              <li><b>“curl it into the top corner”</b> — bend it round the keeper.</li>
-              <li><b>Beat the defender</b> — “<b>shield</b> the ball”, “<b>knock it past</b> him”, or just outrun him.</li>
-              <li><b>“go left then shoot top corner”</b> — line up, then call the shot.</li>
-              <li>Lost it? “<b>win the ball back</b>”, “close him down”. Also “juggle”, “trap it”.</li>
-            </ul>
-          </div>
-
-          <div class="block">
-            <h3>KEYBOARD</h3>
+            <h3>KEYBOARD SHORTCUTS</h3>
             <div class="keys">
               <span><kbd>W</kbd>/<kbd>↑</kbd> forward</span>
               <span><kbd>S</kbd>/<kbd>↓</kbd> reverse</span>
               <span><kbd>A</kbd>/<kbd>←</kbd> steer left</span>
               <span><kbd>D</kbd>/<kbd>→</kbd> steer right</span>
-              <span><kbd>Shift</kbd> run</span>
-              <span><kbd>Space</kbd> jump</span>
-              <span><kbd>E</kbd> kick ⚽</span>
-              <span><kbd>F</kbd> wave</span>
-              <span><kbd>G</kbd> dance</span>
-              <span><kbd>J</kbd> juggle</span>
+              <span><kbd>Shift</kbd> sprint</span>
+              <span><kbd>Space</kbd> PTT / Jump</span>
+              <span><kbd>E</kbd> kick</span>
+              <span><kbd>Q</kbd> feint</span>
+              <span><kbd>Z</kbd> flick</span>
+              <span><kbd>X</kbd> one-two</span>
               <span><kbd>C</kbd> camera</span>
-              <span><kbd>R</kbd> recenter</span>
-              <span><kbd>M</kbd> mute</span>
               <span><kbd>Esc</kbd> stop</span>
             </div>
           </div>
@@ -196,16 +227,16 @@
       </aside>
     </div>
 
-    <!-- Splash (also unlocks audio on a user gesture) -->
+    <!-- Splash Screen -->
     <div id="splash" class="splash">
       <div class="splash-card">
         <div class="splash-logo"><span class="neon-cyan">ECH</span><span class="neon-magenta">O</span></div>
-        <p class="splash-sub">Drive a neon robot with your voice.</p>
+        <p class="splash-sub">Continuous Voice-Driven 3D Arcade Football.</p>
         <div class="splash-actions">
-          <button id="btn-start-voice" class="btn-primary">🎙 Start with voice</button>
-          <button id="btn-start-keys" class="btn-ghost">⌨ Keyboard only</button>
+          <button id="btn-start-voice" class="btn-primary">🎙 Start Captain Mode</button>
+          <button id="btn-start-keys" class="btn-ghost">⌨ Keyboard Deck</button>
         </div>
-        <p class="splash-hint">Best in Chrome or Edge · Say “walk forward”, then “stop”.</p>
+        <p class="splash-hint">Say “carry”, “feint left”, “shoot top bins”. Press Space anytime to talk.</p>
         <a class="splash-source" href="https://github.com/Royverse/echo" target="_blank" rel="noopener noreferrer">
           <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" fill="currentColor">
             <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/>

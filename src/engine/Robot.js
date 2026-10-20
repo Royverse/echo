@@ -1,32 +1,34 @@
-// Procedural robot, fully rigged from primitives. The animation is driven by the
-// engine's locomotion state (speed + turn rate) so the gait always matches the
-// real ground speed — walk and run emerge from one blended cycle, no foot slide.
+// Procedural robot, fully rigged from primitives. Driven by the engine's
+// locomotion state (speed + turn rate) so the gait matches real ground speed.
+// Features upper-body kick strike layering over gait, strike-snap easing,
+// and procedural animations for feint, flick, and bicycle kick.
 import * as THREE from 'three';
 
 export class Robot {
   constructor() {
     this.mesh = new THREE.Group();
 
-    // Transient expressive poses set by the engine:
-    // 'none' | 'wave' | 'dance' | 'kick' | 'juggle'.
+    // Transient expressive poses: 'none' | 'wave' | 'dance' | 'kick' | 'juggle' | 'feint' | 'flick' | 'bicycle'
     this.pose = 'none';
     this.airborne = false;
 
-    // Kick is a one-shot: a phase 0..1 drives wind-up → strike → follow-through.
-    // The engine times the ball's impulse to KICK_CONTACT so foot meets ball.
+    // Kick one-shot parameters
     this.kickPhase = 0;
     this.kickDuration = 0.7;
     this.kickLeg = -1;        // -1 = right leg, +1 = left leg
-    this.KICK_CONTACT = 0.5;  // fraction of the kick at which the foot strikes
+    this.KICK_CONTACT = 0.5;  // fraction of the kick at which foot strikes
 
     this.animTime = 0;
-    this.gaitPhase = 0;       // advances with distance travelled -> no sliding
-    this.jumpBend = 0;        // 0 standing .. 1 crouched (engine-driven)
-    this.lean = 0;            // smoothed bank angle
-    this.pitch = 0;           // smoothed forward lean
+    this.gaitPhase = 0;
+    this.jumpBend = 0;
+    this.lean = 0;
+    this.pitch = 0;
+
+    // Strike-snap offset
+    this.strikeSnap = 0;
 
     this.defaultHeight = 1.6;
-    this.walkSpeed = 3.0;     // speed above which the run blend kicks in
+    this.walkSpeed = 3.0;
 
     this.buildRobot();
   }
@@ -47,12 +49,12 @@ export class Robot {
     torsoMesh.castShadow = torsoMesh.receiveShadow = true;
     this.torso.add(torsoMesh);
 
-    // chest beveled plate
+    // Chest plate
     const plate = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.05), trimMat);
     plate.position.set(0, 0.05, 0.31);
     this.torso.add(plate);
 
-    // Glowing core + a soft point light for a believable self-lit glow
+    // Glowing core
     const core = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.12, 20), glowCyan);
     core.rotation.x = Math.PI / 2;
     core.position.set(0, 0.12, 0.33);
@@ -102,58 +104,59 @@ export class Robot {
     const buildArm = (side) => {
       const shoulder = new THREE.Group();
       shoulder.position.set(0.52 * side, 0.35, 0);
-      this.torso.add(shoulder);
-      shoulder.add(new THREE.Mesh(new THREE.SphereGeometry(0.1, 14, 14), trimMat));
-      const upper = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.35, 10), metalMat);
-      upper.position.set(0, -0.18, 0);
+      const upper = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.45, 0.18), metalMat);
+      upper.position.y = -0.22;
       upper.castShadow = true;
       shoulder.add(upper);
 
       const elbow = new THREE.Group();
-      elbow.position.set(0, -0.36, 0);
+      elbow.position.y = -0.45;
       shoulder.add(elbow);
-      elbow.add(new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 10), trimMat));
-      const lower = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.06, 0.3, 10), metalMat);
-      lower.position.set(0, -0.15, 0);
+      const lower = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.42, 0.15), trimMat);
+      lower.position.y = -0.21;
       lower.castShadow = true;
       elbow.add(lower);
-      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.13, 0.11), trimMat);
-      hand.position.set(0, -0.33, 0);
+
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), metalMat);
+      hand.position.y = -0.44;
       elbow.add(hand);
+
+      this.torso.add(shoulder);
       return { shoulder, elbow };
     };
-    const right = buildArm(-1);
-    const left = buildArm(1);
-    this.rightShoulder = right.shoulder; this.rightElbow = right.elbow;
-    this.leftShoulder = left.shoulder; this.leftElbow = left.elbow;
+
+    const rArm = buildArm(-1);
+    const lArm = buildArm(1);
+    this.rightShoulder = rArm.shoulder; this.rightElbow = rArm.elbow;
+    this.leftShoulder = lArm.shoulder; this.leftElbow = lArm.elbow;
 
     // Legs
     const buildLeg = (side) => {
       const thigh = new THREE.Group();
-      thigh.position.set(0.25 * side, -0.55, 0);
-      this.torso.add(thigh);
-      const hip = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.16, 10), trimMat);
-      hip.rotation.z = Math.PI / 2;
-      thigh.add(hip);
-      const thighMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.08, 0.45, 10), metalMat);
-      thighMesh.position.set(0, -0.22, 0);
+      thigh.position.set(0.24 * side, -0.5, 0);
+      this.mesh.add(thigh);
+
+      const thighMesh = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.5, 0.24), metalMat);
+      thighMesh.position.y = -0.25;
       thighMesh.castShadow = true;
       thigh.add(thighMesh);
 
       const calf = new THREE.Group();
-      calf.position.set(0, -0.45, 0);
+      calf.position.y = -0.5;
       thigh.add(calf);
-      calf.add(new THREE.Mesh(new THREE.SphereGeometry(0.09, 10, 10), trimMat));
-      const calfMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.07, 0.4, 10), metalMat);
-      calfMesh.position.set(0, -0.2, 0);
+
+      const calfMesh = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.48, 0.2), metalMat);
+      calfMesh.position.y = -0.24;
       calfMesh.castShadow = true;
       calf.add(calfMesh);
+
       const foot = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.1, 0.28), trimMat);
       foot.position.set(0, -0.42, 0.05);
       foot.castShadow = true;
       calf.add(foot);
       return { thigh, calf };
     };
+
     const rLeg = buildLeg(-1);
     const lLeg = buildLeg(1);
     this.rightThigh = rLeg.thigh; this.rightCalf = rLeg.calf;
@@ -162,17 +165,12 @@ export class Robot {
     this.mesh.position.y = this.defaultHeight;
   }
 
-  /**
-   * @param {number} dt
-   * @param {{speed:number, turnRate:number, maxSpeed:number, airborne:boolean}} motion
-   * @returns {boolean} true on the frame a footfall lands (engine plays the sound)
-   */
   update(dt, motion = {}) {
     const { speed = 0, turnRate = 0, maxSpeed = 6, airborne = false } = motion;
     this.animTime += dt;
     this.airborne = airborne;
 
-    // Occasional blink.
+    // Blink
     const blink = Math.sin(this.animTime * 0.7) > 0.985 ? 0.12 : 1;
     this.eyeL.scale.y = blink;
     this.eyeR.scale.y = blink;
@@ -181,6 +179,9 @@ export class Robot {
     if (this.pose === 'wave') { this.animateWave(speed); return false; }
     if (this.pose === 'kick') { this.animateKick(dt); return false; }
     if (this.pose === 'juggle') { this.animateJuggle(); return false; }
+    if (this.pose === 'feint') { this.animateFeint(); return false; }
+    if (this.pose === 'flick') { this.animateFlick(); return false; }
+    if (this.pose === 'bicycle') { this.animateBicycle(); return false; }
 
     return this.animateLocomotion(dt, speed, turnRate, maxSpeed, airborne);
   }
@@ -191,22 +192,19 @@ export class Robot {
     const run = THREE.MathUtils.clamp((absSpeed - this.walkSpeed) / Math.max(0.1, maxSpeed - this.walkSpeed), 0, 1);
     const sign = speed < 0 ? -1 : 1;
 
-    // Advance the gait by distance travelled so feet track the ground.
     const prevPhase = this.gaitPhase;
     this.gaitPhase += absSpeed * 1.7 * dt;
     const cycle = this.gaitPhase * sign;
 
-    // Smooth body lean: bank into turns, pitch forward with speed.
     const targetLean = THREE.MathUtils.clamp(-turnRate * 0.18 * (0.4 + move), -0.35, 0.35);
     const targetPitch = move * sign * (0.06 + run * 0.12);
     this.lean = THREE.MathUtils.lerp(this.lean, targetLean, 0.12);
     this.pitch = THREE.MathUtils.lerp(this.pitch, targetPitch, 0.1);
 
-    const swing = (0.25 + run * 0.45) * move;        // leg amplitude
+    const swing = (0.25 + run * 0.45) * move;
     const armSwing = (0.2 + run * 0.5) * move;
     const bobAmp = (0.04 + run * 0.06) * move;
 
-    // Torso
     this.torso.position.y = THREE.MathUtils.lerp(this.torso.position.y, Math.abs(Math.sin(cycle)) * bobAmp - bobAmp * 0.5, 0.4);
     this.torso.rotation.z = this.lean;
     this.torso.rotation.x = this.pitch;
@@ -214,11 +212,9 @@ export class Robot {
     this.head.rotation.y = THREE.MathUtils.lerp(this.head.rotation.y, -Math.sin(cycle) * 0.03 * move - turnRate * 0.05, 0.2);
     this.head.rotation.z = -this.lean * 0.5;
 
-    // Idle breathing folded in when nearly still.
     const breath = Math.sin(this.animTime * 1.6) * (1 - move);
 
     if (airborne) {
-      // Tuck for the jump arc.
       this.setLimb(this.leftThigh, 'x', -0.5, 0.2);
       this.setLimb(this.rightThigh, 'x', -0.6, 0.2);
       this.setLimb(this.leftCalf, 'x', 0.7, 0.2);
@@ -230,7 +226,6 @@ export class Robot {
       return false;
     }
 
-    // Legs swing in counterphase; knees bend backwards on the back swing only (negative rotation)
     this.rightThigh.rotation.x = Math.sin(cycle) * swing + this.jumpBend * 0.5;
     this.leftThigh.rotation.x = -Math.sin(cycle) * swing + this.jumpBend * 0.5;
     const kr = Math.sin(cycle - Math.PI / 3);
@@ -238,7 +233,6 @@ export class Robot {
     this.rightCalf.rotation.x = (kr > 0 ? -kr * (0.4 + run * 0.4) : 0) - this.jumpBend * 0.7;
     this.leftCalf.rotation.x = (kl > 0 ? -kl * (0.4 + run * 0.4) : 0) - this.jumpBend * 0.7;
 
-    // Arms counter-swing; settle to a relaxed idle when still.
     this.leftShoulder.rotation.x = -Math.sin(cycle) * armSwing + breath * 0.05;
     this.rightShoulder.rotation.x = Math.sin(cycle) * armSwing + breath * 0.05;
     this.leftShoulder.rotation.z = THREE.MathUtils.lerp(this.leftShoulder.rotation.z, 0.16 + run * 0.1, 0.2);
@@ -246,7 +240,6 @@ export class Robot {
     this.leftElbow.rotation.x = -0.2 - Math.abs(Math.sin(cycle)) * (0.2 + run * 0.3);
     this.rightElbow.rotation.x = -0.2 - Math.abs(Math.cos(cycle)) * (0.2 + run * 0.3);
 
-    // Footfall detection: trigger when a foot passes the bottom of its arc.
     if (move > 0.05) {
       const stepBefore = Math.floor((prevPhase * sign) / Math.PI);
       const stepNow = Math.floor(cycle / Math.PI);
@@ -261,7 +254,6 @@ export class Robot {
 
   animateWave(speed) {
     const breath = Math.sin(this.animTime * 1.6);
-    // Settle lower body to standing.
     [this.leftThigh, this.rightThigh, this.leftCalf, this.rightCalf].forEach((l) => this.setLimb(l, 'x', 0, 0.15));
     this.torso.rotation.set(THREE.MathUtils.lerp(this.torso.rotation.x, 0, 0.1), 0, THREE.MathUtils.lerp(this.torso.rotation.z, 0, 0.1));
     this.lean = this.pitch = 0;
@@ -298,7 +290,6 @@ export class Robot {
     this.rightCalf.rotation.x = Math.max(0, -Math.sin(c)) * 0.3;
   }
 
-  // Begin a one-shot kick. `leg` -1 = right, +1 = left.
   startKick(duration = 0.7, leg = -1) {
     this.pose = 'kick';
     this.kickPhase = 0;
@@ -319,23 +310,20 @@ export class Robot {
     const easeIn = (x) => x * x;
     const easeInOut = (x) => (x < 0.5 ? 2 * x * x : 1 - Math.pow(-2 * x + 2, 2) / 2);
 
-    // Plant the support leg.
     this.setLimb(otherThigh, 'x', -0.12, 0.3);
     this.setLimb(otherCalf, 'x', -0.08, 0.3);
     otherThigh.rotation.z = 0;
 
-    // Kicking-leg arc. thighX: + draws the foot behind, − swings it forward (+z).
-    let thighX;
-    let calfX;
-    if (p < 0.45) {                       // wind-up: draw back, bend knee
+    let thighX, calfX;
+    if (p < 0.45) {
       const w = p / 0.45;
       thighX = THREE.MathUtils.lerp(0, 0.6, easeOut(w));
       calfX = THREE.MathUtils.lerp(0, -0.75, easeOut(w));
-    } else if (p < 0.6) {                 // strike through contact (~0.5)
+    } else if (p < 0.6) {
       const s = (p - 0.45) / 0.15;
-      thighX = THREE.MathUtils.lerp(0.6, -0.75, easeIn(s));
+      thighX = THREE.MathUtils.lerp(0.6, -0.75 - this.strikeSnap * 0.2, easeIn(s));
       calfX = THREE.MathUtils.lerp(-0.75, 0, s);
-    } else {                              // follow-through & recover
+    } else {
       const f = (p - 0.6) / 0.4;
       thighX = THREE.MathUtils.lerp(-0.75, 0, easeInOut(f));
       calfX = THREE.MathUtils.lerp(0, -0.12, f);
@@ -344,21 +332,38 @@ export class Robot {
     thigh.rotation.z = 0;
     calf.rotation.x = calfX;
 
-    // Torso: lean back on the wind-up, drive into the strike.
     const lean = p < 0.45 ? -0.12 * (p / 0.45) : THREE.MathUtils.clamp(0.16 * (1 - (p - 0.45) / 0.55), 0, 0.16);
     this.torso.rotation.x = THREE.MathUtils.lerp(this.torso.rotation.x, lean, 0.3);
     this.torso.rotation.z = THREE.MathUtils.lerp(this.torso.rotation.z, 0, 0.3);
-    this.torso.rotation.y = THREE.MathUtils.lerp(this.torso.rotation.y, 0, 0.3);
-    this.torso.position.y = THREE.MathUtils.lerp(this.torso.position.y, 0, 0.3);
 
-    // Arms counter-balance: opposite arm swings forward.
     this.setLimb(this.leftShoulder, 'x', leg < 0 ? -0.5 : 0.3, 0.2);
     this.setLimb(this.rightShoulder, 'x', leg < 0 ? 0.3 : -0.5, 0.2);
     this.setLimb(this.leftShoulder, 'z', 0.4, 0.2);
     this.setLimb(this.rightShoulder, 'z', -0.4, 0.2);
     this.leftElbow.rotation.x = -0.3;
     this.rightElbow.rotation.x = -0.3;
-    this.lean = this.pitch = 0;
+  }
+
+  animateFeint() {
+    const t = Math.sin(this.animTime * 14.0);
+    this.torso.rotation.z = t * 0.4;
+    this.torso.position.x = t * 0.25;
+    this.leftShoulder.rotation.z = 0.5 + t * 0.3;
+    this.rightShoulder.rotation.z = -0.5 + t * 0.3;
+  }
+
+  animateFlick() {
+    this.torso.rotation.x = -0.35;
+    this.rightThigh.rotation.x = 0.8;
+    this.rightCalf.rotation.x = -1.2;
+    this.leftThigh.rotation.x = -0.4;
+  }
+
+  animateBicycle() {
+    // Airborne backflip pose
+    this.torso.rotation.x = THREE.MathUtils.lerp(this.torso.rotation.x, -Math.PI * 0.7, 0.2);
+    this.rightThigh.rotation.x = -1.4;
+    this.leftThigh.rotation.x = 0.6;
   }
 
   animateJuggle() {
@@ -366,22 +371,16 @@ export class Robot {
     this.torso.position.y = THREE.MathUtils.lerp(this.torso.position.y, Math.abs(Math.sin(c)) * 0.05, 0.4);
     this.torso.rotation.set(0.06, 0, 0);
 
-    // Alternating knee lifts, as if bouncing the ball foot to foot.
     this.leftThigh.rotation.x = -Math.max(0, Math.sin(c)) * 0.7;
     this.rightThigh.rotation.x = -Math.max(0, -Math.sin(c)) * 0.7;
-    this.leftThigh.rotation.z = 0;
-    this.rightThigh.rotation.z = 0;
     this.leftCalf.rotation.x = -Math.max(0, Math.sin(c)) * 0.5;
     this.rightCalf.rotation.x = -Math.max(0, -Math.sin(c)) * 0.5;
 
-    // Arms out for balance.
     this.setLimb(this.leftShoulder, 'z', 0.5, 0.2);
     this.setLimb(this.rightShoulder, 'z', -0.5, 0.2);
     this.leftShoulder.rotation.x = Math.sin(c) * 0.2;
     this.rightShoulder.rotation.x = -Math.sin(c) * 0.2;
-    this.leftElbow.rotation.x = -0.5;
-    this.rightElbow.rotation.x = -0.5;
-    this.head.rotation.x = THREE.MathUtils.lerp(this.head.rotation.x, 0.22, 0.2); // watch the ball
+    this.head.rotation.x = THREE.MathUtils.lerp(this.head.rotation.x, 0.22, 0.2);
     this.lean = this.pitch = 0;
   }
 

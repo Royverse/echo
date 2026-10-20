@@ -1,25 +1,25 @@
 // Local intent parser — instant, zero-network command understanding.
-//
-// Resolves the common cases (keyboard, quick buttons, clearly-phrased speech)
-// with no round-trip. Anything it can't confidently parse returns
-// { confident: false } and the caller escalates to the Gemini NLU.
-//
-// It splits run-on speech into ORDERED clauses, so "walk forward then turn left
-// and jump" becomes [move, turn, jump] — a sequence the engine runs in order.
+// Resolves commands with sub-millisecond regex matching.
 //
 // Shared intent schema (local + Gemini both emit these):
-//   { type: 'move',  dir: 'forward'|'backward', steps?: number }   // steps omitted => engine default
+//   { type: 'order', order: 'carry'|'hold'|'press'|'screen'|'support', target?: string }
+//   { type: 'move',  dir: 'forward'|'backward'|'forward-left'|..., steps?: number }
 //   { type: 'turn',  dir: 'left'|'right'|'around', degrees?: number }
 //   { type: 'speed', level: 'run'|'walk'|'faster'|'slower' }
-//   { type: 'stop' } | 'jump' | 'wave' | 'dance' | 'reset' | 'unknown'
+//   { type: 'stop' } | 'jump' | 'wave' | 'dance' | 'reset'
 //   { type: 'kick', power?: 'tap'|'pass'|'drive'|'blast',
 //                   loft?: 'ground'|'low'|'lofted'|'chip',
 //                   curve?: 'left'|'right', aim?: 'left'|'right',
+//                   style?: 'finesse'|'knuckle'|'dipper'|'normal',
+//                   smart?: boolean,
 //                   target?: 'top-left'|'top-right'|'top-center'|'bottom-left'|
-//                            'bottom-right'|'low'|'near-post'|'far-post' }   // all optional
+//                            'bottom-right'|'low'|'near-post'|'far-post'|'open-corner' }
+//   { type: 'feint', dir: 'left'|'right' }
+//   { type: 'flick' } | { type: 'onetwo' } | { type: 'nutmeg' } | { type: 'bicycle' }
 //   { type: 'dribble', dir: 'forward'|'backward', steps?: number }
-//   { type: 'juggle' } | { type: 'trap' }
-//   { type: 'shield' } | { type: 'knock', steps?: number } | { type: 'win' }
+//   { type: 'juggle' } | { type: 'trap' } | { type: 'shield' } | { type: 'knock', steps?: number }
+//   { type: 'squad', verb: 'overlap'|'cross'|'switch'|'pass_to'|..., target?: string }
+//   { type: 'macro_record', name: string }
 
 const NUMBER_WORDS = {
   zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7,
@@ -29,38 +29,50 @@ const NUMBER_WORDS = {
 };
 
 const MAX_STEPS = 30;
-const CONTINUOUS_STEPS = 999; // "keep walking" — bounded but effectively endless
+const CONTINUOUS_STEPS = 999;
 
-const STOP_WORDS = ['stop', 'halt', 'freeze', 'stay', 'wait', 'brake', 'whoa', 'woah', 'hold on', 'hold up', 'cut it', 'enough'];
+const STOP_WORDS = ['stop', 'halt', 'freeze', 'stay', 'wait', 'brake', 'whoa', 'woah', 'hold on', 'hold up', 'cut it', 'enough', 'cease'];
 const AROUND_WORDS = ['around', 'about', '180', 'behind you', 'turn back'];
 const LEFT_WORDS = ['left', 'port', 'counterclockwise', 'counter clockwise'];
 const RIGHT_WORDS = ['right', 'starboard', 'clockwise'];
 const FORWARD_WORDS = ['forward', 'forwards', 'ahead', 'straight', 'onward', 'onwards', 'north'];
 const BACKWARD_WORDS = ['backward', 'backwards', 'back up', 'backup', 'reverse', 'retreat', 'south', 'back'];
 const TURN_VERBS = ['turn', 'rotate', 'spin', 'pivot', 'face', 'swivel'];
-const MOVE_VERBS = ['move', 'walk', 'go', 'head', 'step', 'march', 'proceed', 'advance', 'travel', 'come'];
+const MOVE_VERBS = ['move', 'walk', 'step', 'march', 'proceed', 'travel'];
 const KEEP_WORDS = ['keep', 'continuous', 'continuously', 'forever', 'keep going', 'keep walking', 'keep moving'];
 
-// --- Football vocabulary -----------------------------------------------------
-const KICK_VERBS = ['kick', 'shoot', 'strike', 'boot', 'volley', 'fire', 'finish', 'slot', 'knock', 'hit', 'drive', 'launch', 'thump', 'wallop', 'smash', 'blast', 'belt', 'hammer', 'rocket', 'put', 'place', 'tuck', 'stick'];
+// Football vocabulary
+const KICK_VERBS = ['kick', 'shoot', 'strike', 'boot', 'volley', 'fire', 'finish', 'slot', 'hit', 'drive', 'launch', 'thump', 'wallop', 'smash', 'blast', 'belt', 'hammer', 'rocket', 'put', 'place', 'tuck', 'stick', 'have a go'];
 const BLAST_WORDS = ['blast', 'smash', 'hammer', 'belt', 'rocket', 'thump', 'wallop', 'power', 'hard', 'rip', 'bury', 'leather', 'laces'];
-const PASS_WORDS = ['pass', 'square', 'feed', 'lay it'];
+const PASS_WORDS = ['pass', 'square', 'feed', 'lay it', 'find him', 'layoff'];
 const TAP_WORDS = ['tap', 'touch', 'nudge', 'poke'];
 const SOFT_WORDS = ['soft', 'softly', 'gently', 'gentle', 'easy', 'easily', 'lightly', 'light'];
 const CURL_WORDS = ['curl', 'bend', 'swerve', 'hook', 'whip', 'finesse', 'curve'];
-const CHIP_WORDS = ['chip', 'dink', 'scoop'];
-const LOFT_WORDS = ['loft', 'lofted', 'lob', 'float', 'floated', 'in the air'];
-const GROUND_WORDS = ['low', 'driven', 'grounded', 'flat', 'along the ground', 'on the ground', 'keep it low'];
-const HIGH_WORDS = ['top', 'upper', 'roof', 'high', 'bar'];
-const DRIBBLE_WORDS = ['dribble', 'run with it', 'carry it', 'knock it forward', 'push it forward'];
-const JUGGLE_WORDS = ['juggle', 'juggling', 'keepie', 'keepy', 'keep ups', 'keep up', 'keep it up', 'keepie uppies', 'keepy uppies'];
-const TRAP_WORDS = ['trap', 'control it', 'control', 'settle it', 'settle', 'kill it', 'first touch'];
-const SHIELD_WORDS = ['shield', 'hold it up', 'hold up the ball', 'hold the ball', 'protect the ball', 'back to goal', 'screen it', 'shield the ball'];
-const KNOCK_WORDS = ['knock it past', 'push it past', 'knock past', 'poke it past', 'take it past', 'go past him', 'nutmeg', 'knock it by'];
-const WIN_WORDS = ['win it', 'win the ball', 'win it back', 'get the ball', 'get it back', 'close him down', 'close down', 'go get it', 'win possession', 'win the ball back'];
+const CHIP_WORDS = ['chip', 'dink', 'scoop', 'lob'];
+const LOFT_WORDS = ['loft', 'lofted', 'float', 'floated', 'in the air', 'high'];
+const GROUND_WORDS = ['ground', 'low', 'driven', 'grounded', 'flat', 'along the ground', 'on the ground', 'keep it low', 'bottom'];
+const HIGH_WORDS = ['top', 'upper', 'roof', 'high', 'bar', 'bins', 'top bins'];
 
-// Connectors that separate one command from the next.
+// Standing Orders vocabulary
+const CARRY_WORDS = ['carry', 'carry it', 'drive it', 'take it on', 'advance', 'push forward', 'drive forward', 'take space'];
+const HOLD_WORDS = ['hold', 'hold up', 'hold the ball', 'protect', 'protect the ball', 'shield it', 'shield the ball', 'keep possession'];
+const PRESS_WORDS = ['press', 'win it back', 'win it', 'get it', 'get it back', 'win ball', 'close down', 'hunt', 'hunt it', 'tackle'];
+const SCREEN_WORDS = ['screen', 'goal side', 'goalside', 'cover', 'cover back', 'protect goal'];
+const SUPPORT_WORDS = ['support', 'show for it', 'give an option', 'come short'];
+
+// New Advanced Mechanics
+const FEINT_WORDS = ['feint', 'fake', 'drop shoulder', 'shimmy', 'stepover', 'step over', 'dummy'];
+const FLICK_WORDS = ['flick', 'rainbow', 'rainbow flick', 'sombrero', 'lift it over'];
+const ONETWO_WORDS = ['one two', 'onetwo', '1 2', 'give and go', 'wall pass', 'wall drone'];
+const NUTMEG_WORDS = ['nutmeg', 'megs', 'meg', 'through his legs', 'through the legs', 'panna'];
+const BICYCLE_WORDS = ['bicycle', 'bicycle kick', 'overhead', 'overhead kick', 'scissor kick', 'acrobatic'];
+const KNUCKLE_WORDS = ['knuckle', 'knuckleball', 'dead ball', 'no spin'];
+const DIPPER_WORDS = ['dipper', 'topspin', 'dip'];
+
+// Connectors
 const SPLIT_RE = /\s*(?:,|;|\.|\bthen\b|\band then\b|\bafter that\b|\bafterwards\b|\bnext\b|\bfollowed by\b|\bnow\b|\band\b)\s*/gi;
+
+let lastExecutedAction = null;
 
 function clean(text) {
   return ` ${text.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim()} `;
@@ -83,33 +95,28 @@ function extractNumber(padded) {
   return null;
 }
 
-// A spoken placement → a goal-mouth target zone, or null if no clear placement
-// was called. Needs a real cue (top/bottom/corner/post), so a casual "shoot left"
-// stays a light aim nudge rather than a committed corner.
 function parseTarget(padded) {
-  const post = padded.includes(' post ');
-  if (post && includesWord(padded, 'near')) return 'near-post';
-  if (post && includesWord(padded, 'far')) return 'far-post';
+  if (anyWord(padded, ['open corner', 'away from keeper', 'empty corner', 'far post'])) return 'far-post';
+  if (anyWord(padded, ['near post', 'short side'])) return 'near-post';
 
   const high = anyWord(padded, ['top', 'upper', 'roof', 'bins']);
-  const low = anyWord(padded, ['bottom']);
+  const low = anyWord(padded, ['bottom', 'low']);
   const corner = anyWord(padded, ['corner', 'bins']);
   if (!high && !low && !corner) return null;
 
   const left = anyWord(padded, LEFT_WORDS);
   const right = anyWord(padded, RIGHT_WORDS);
   const h = left ? 'left' : right ? 'right' : null;
-  const v = high ? 'top' : low ? 'bottom' : 'top';   // a bare "corner" reads as the top corner
+  const v = high ? 'top' : low ? 'bottom' : 'top';
   if (h) return `${v}-${h}`;
   return v === 'top' ? 'top-center' : 'low';
 }
 
-// A spoken strike → a kick intent with optional power/loft/curve/aim/target.
-// Returns null if the clause isn't about kicking the ball.
 function parseKick(padded) {
   const isKick = anyWord(padded, KICK_VERBS) || anyWord(padded, PASS_WORDS)
     || anyWord(padded, CHIP_WORDS) || anyWord(padded, LOFT_WORDS)
-    || anyWord(padded, CURL_WORDS) || anyWord(padded, TAP_WORDS);
+    || anyWord(padded, CURL_WORDS) || anyWord(padded, TAP_WORDS)
+    || anyWord(padded, KNUCKLE_WORDS) || anyWord(padded, DIPPER_WORDS);
   if (!isKick) return null;
 
   let power = 'drive';
@@ -121,61 +128,118 @@ function parseKick(padded) {
   if (anyWord(padded, CHIP_WORDS)) loft = 'chip';
   else if (anyWord(padded, LOFT_WORDS)) loft = 'lofted';
   else if (anyWord(padded, GROUND_WORDS)) loft = 'ground';
-  if (loft === 'low' && anyWord(padded, HIGH_WORDS)) loft = 'lofted'; // "top corner" lifts it
+  if (loft === 'low' && anyWord(padded, HIGH_WORDS)) loft = 'lofted';
+
+  let style = 'normal';
+  if (anyWord(padded, KNUCKLE_WORDS)) style = 'knuckle';
+  else if (anyWord(padded, DIPPER_WORDS)) style = 'dipper';
+  else if (anyWord(padded, CURL_WORDS)) style = 'finesse';
 
   const left = anyWord(padded, LEFT_WORDS);
   const right = anyWord(padded, RIGHT_WORDS);
-  const intent = { type: 'kick', power, loft };
-  if (anyWord(padded, CURL_WORDS)) intent.curve = right ? 'right' : 'left'; // curl defaults left
+  const intent = { type: 'kick', power, loft, style };
+  if (anyWord(padded, CURL_WORDS) || style === 'finesse') {
+    intent.curve = right ? 'right' : 'left';
+  }
 
   const target = parseTarget(padded);
-  if (target) intent.target = target;          // a placed shot at a goal corner
-  else if (left || right) intent.aim = left ? 'left' : 'right'; // otherwise a light aim nudge
+  if (target) {
+    intent.target = target;
+  } else if (left || right) {
+    intent.aim = left ? 'left' : 'right';
+  } else {
+    // Smart default marker: engine will resolve best post/corner against live keeper
+    intent.smart = true;
+  }
   return intent;
 }
 
-// Football actions take precedence within a clause (a clause is one command).
 function parseFootball(padded) {
-  if (anyWord(padded, JUGGLE_WORDS)) return [{ type: 'juggle' }];
-  if (anyWord(padded, SHIELD_WORDS)) return [{ type: 'shield' }];
-  if (anyWord(padded, KNOCK_WORDS)) {
+  // Advanced tricks
+  if (anyWord(padded, FEINT_WORDS)) {
+    const dir = anyWord(padded, LEFT_WORDS) ? 'left' : 'right';
+    return [{ type: 'feint', dir }];
+  }
+  if (anyWord(padded, FLICK_WORDS)) return [{ type: 'flick' }];
+  if (anyWord(padded, ONETWO_WORDS)) return [{ type: 'onetwo' }];
+  if (anyWord(padded, NUTMEG_WORDS)) return [{ type: 'nutmeg' }];
+  if (anyWord(padded, BICYCLE_WORDS)) return [{ type: 'bicycle' }];
+
+  // Standing Orders
+  if (anyWord(padded, CARRY_WORDS)) {
+    let target = 'goal';
+    if (anyWord(padded, LEFT_WORDS)) target = 'left';
+    else if (anyWord(padded, RIGHT_WORDS)) target = 'right';
+    return [{ type: 'order', order: 'carry', target }];
+  }
+  if (anyWord(padded, HOLD_WORDS)) return [{ type: 'order', order: 'hold' }];
+  if (anyWord(padded, PRESS_WORDS)) return [{ type: 'order', order: 'press' }];
+  if (anyWord(padded, SCREEN_WORDS)) return [{ type: 'order', order: 'screen' }];
+  if (anyWord(padded, SUPPORT_WORDS)) return [{ type: 'order', order: 'support' }];
+
+  // Squad Captain verbs (Phase 3)
+  if (anyWord(padded, ['overlap right', 'overlap to the right'])) return [{ type: 'squad', verb: 'overlap', target: 'right' }];
+  if (anyWord(padded, ['overlap left', 'overlap to the left', 'overlap'])) return [{ type: 'squad', verb: 'overlap', target: 'left' }];
+  if (anyWord(padded, ['make a run', 'run in behind', 'go long'])) return [{ type: 'squad', verb: 'run' }];
+  if (anyWord(padded, ['cross', 'cross it', 'whip it in'])) return [{ type: 'squad', verb: 'cross' }];
+  if (anyWord(padded, ['switch', 'switch play', 'switch sides'])) return [{ type: 'squad', verb: 'switch' }];
+  if (anyWord(padded, ['pass to nova', 'find nova'])) return [{ type: 'squad', verb: 'pass_to', target: 'Nova' }];
+  if (anyWord(padded, ['pass to pixel', 'find pixel'])) return [{ type: 'squad', verb: 'pass_to', target: 'Pixel' }];
+  if (anyWord(padded, ['leave it', 'my ball', 'mine'])) return [{ type: 'squad', verb: 'call_ball' }];
+
+  // Freestyle / Possession
+  if (anyWord(padded, ['juggle', 'keepie', 'keepy'])) return [{ type: 'juggle' }];
+  if (anyWord(padded, ['trap', 'control it', 'settle it', 'kill it'])) return [{ type: 'trap' }];
+  if (anyWord(padded, ['shield', 'shield ball'])) return [{ type: 'shield' }];
+  if (anyWord(padded, ['knock past', 'knock it past', 'push past'])) {
     const steps = extractNumber(padded);
     return [{ type: 'knock', ...(steps ? { steps } : {}) }];
   }
-  if (anyWord(padded, WIN_WORDS)) return [{ type: 'win' }];
-  if (anyWord(padded, TRAP_WORDS)) return [{ type: 'trap' }];
-  if (anyWord(padded, DRIBBLE_WORDS)) {
+  if (anyWord(padded, ['dribble'])) {
     const dir = anyWord(padded, BACKWARD_WORDS) ? 'backward' : 'forward';
     const steps = extractNumber(padded);
     return [{ type: 'dribble', dir, ...(steps ? { steps } : {}) }];
   }
+
   const kick = parseKick(padded);
   return kick ? [kick] : [];
 }
 
-// Parse a single clause into zero or more intents (in order).
 function parseClause(rawClause) {
   const padded = clean(rawClause);
   if (!padded.trim()) return [];
 
+  // Stop / freeze instant purge
   if (anyWord(padded, STOP_WORDS)) return [{ type: 'stop' }];
 
+  // Repeat last action ("again", "same", "repeat")
+  if (anyWord(padded, ['again', 'same', 'repeat', 'one more time']) && lastExecutedAction) {
+    return [{ ...lastExecutedAction }];
+  }
+
+  // Football and Orders take precedence
   const football = parseFootball(padded);
-  if (football.length) return football;
+  if (football.length) {
+    lastExecutedAction = football[0];
+    return football;
+  }
 
   const intents = [];
 
-  if (anyWord(padded, ['dance', 'boogie', 'groove', 'party'])) intents.push({ type: 'dance' });
-  if (anyWord(padded, ['wave', 'hello', 'hi', 'hey there', 'greet', 'salute'])) intents.push({ type: 'wave' });
-  if (anyWord(padded, ['jump', 'hop', 'leap', 'bounce', 'spring'])) intents.push({ type: 'jump' });
-  if (anyWord(padded, ['reset', 'home', 'center', 'centre', 'restart', 'recall', 'go home', 'return home', 'recenter'])) {
+  if (anyWord(padded, ['dance', 'boogie', 'groove'])) intents.push({ type: 'dance' });
+  if (anyWord(padded, ['wave', 'hello', 'hi', 'hey'])) intents.push({ type: 'wave' });
+  if (anyWord(padded, ['jump', 'hop', 'leap'])) intents.push({ type: 'jump' });
+  if (anyWord(padded, ['reset', 'home', 'center', 'centre', 'recenter', 'restart'])) {
     intents.push({ type: 'reset' });
   }
 
-  if (anyWord(padded, ['faster', 'speed up', 'quicker', 'hurry'])) intents.push({ type: 'speed', level: 'faster' });
-  else if (anyWord(padded, ['slower', 'slow down', 'ease up', 'take it slow'])) intents.push({ type: 'speed', level: 'slower' });
+  if (anyWord(padded, ['faster', 'speed up', 'quicker', 'hurry', 'sprint'])) {
+    intents.push({ type: 'speed', level: 'faster' });
+  } else if (anyWord(padded, ['slower', 'slow down', 'ease up', 'take it slow'])) {
+    intents.push({ type: 'speed', level: 'slower' });
+  }
 
-  const wantsRun = anyWord(padded, ['run', 'sprint', 'dash', 'jog', 'bolt']);
+  const wantsRun = anyWord(padded, ['run', 'sprint', 'dash']);
   const wantsKeep = anyWord(padded, KEEP_WORDS);
   const hasTurnVerb = anyWord(padded, TURN_VERBS);
   const hasMoveVerb = anyWord(padded, MOVE_VERBS) || wantsRun || wantsKeep;
@@ -187,14 +251,14 @@ function parseClause(rawClause) {
   const dirForward = anyWord(padded, FORWARD_WORDS);
   const dirBackward = anyWord(padded, BACKWARD_WORDS);
 
-  // Turning: "turn left/around" or a bare "left"/"right" without a move verb.
+  // Turn
   if (hasTurnVerb || ((dirLeft || dirRight || dirAround) && !hasMoveVerb)) {
     if (dirAround) intents.push({ type: 'turn', dir: 'around' });
     else if (dirLeft) intents.push({ type: 'turn', dir: 'left', ...(number && number > 20 ? { degrees: number } : {}) });
     else if (dirRight) intents.push({ type: 'turn', dir: 'right', ...(number && number > 20 ? { degrees: number } : {}) });
   }
 
-  // Movement.
+  // Move
   if (hasMoveVerb || dirForward || dirBackward) {
     if (wantsRun && !intents.some((i) => i.type === 'speed')) intents.push({ type: 'speed', level: 'run' });
     const steps = wantsKeep ? CONTINUOUS_STEPS : number || undefined;
@@ -209,17 +273,57 @@ function parseClause(rawClause) {
     }
   }
 
+  if (intents.length) lastExecutedAction = intents[0];
   return intents;
 }
 
 /**
+ * Load macros from localStorage.
+ */
+function getSavedMacros() {
+  try {
+    return JSON.parse(localStorage.getItem('echo_macros') || '{}');
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Save a macro to localStorage.
+ */
+export function saveMacro(name, intents) {
+  try {
+    const macros = getSavedMacros();
+    macros[name.toLowerCase().trim()] = intents;
+    localStorage.setItem('echo_macros', JSON.stringify(macros));
+  } catch (err) {
+    console.warn('Could not save macro to localStorage', err);
+  }
+}
+
+/**
  * Parse free text into an ordered list of intents.
- * @returns {{ intents: object[], confident: boolean }}
+ * @param {string} text 
+ * @returns {{ intents: object[], confident: boolean, isMacroRecord?: boolean, macroName?: string }}
  */
 export function parseCommand(text) {
   if (!text || !text.trim()) return { intents: [], confident: false };
 
-  // Emergency stop short-circuits everything.
+  // Check for macro definition: "call that <name>" or "save that as <name>"
+  const macroMatch = text.match(/(?:call that|save that as|name that)\s+([a-z0-9_\-\s]+)/i);
+  if (macroMatch) {
+    const macroName = macroMatch[1].trim().toLowerCase();
+    return { intents: [{ type: 'macro_record', name: macroName }], confident: true, isMacroRecord: true, macroName };
+  }
+
+  // Check saved macros
+  const cleanedText = text.trim().toLowerCase();
+  const macros = getSavedMacros();
+  if (macros[cleanedText]) {
+    return { intents: JSON.parse(JSON.stringify(macros[cleanedText])), confident: true };
+  }
+
+  // Emergency stop short-circuits everything
   if (anyWord(clean(text), STOP_WORDS)) return { intents: [{ type: 'stop' }], confident: true };
 
   const clauses = text.split(SPLIT_RE);

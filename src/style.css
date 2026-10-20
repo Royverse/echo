@@ -410,3 +410,78 @@ kbd {
   0% { transform: scaleY(0.25); }
   100% { transform: scaleY(1.0); }
 }
+
+/* -------------------------------------------------------- Order Chip */
+.order-chip {
+  position: absolute; top: 2.9rem; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.45rem;
+  padding: 0.35rem 0.95rem; border-radius: 999px;
+  background: rgba(12, 16, 24, 0.85); border: 1px solid var(--cyan);
+  box-shadow: 0 0 16px rgba(0, 229, 255, 0.3); backdrop-filter: blur(10px);
+  z-index: 6; pointer-events: none; transition: all 0.25s ease;
+}
+.order-chip.hidden { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+.order-icon { font-size: 0.85rem; }
+.order-label {
+  font-family: var(--font-display); font-size: 0.72rem; font-weight: 900;
+  letter-spacing: 1.5px; color: var(--cyan);
+}
+
+/* -------------------------------------------------------- Flow Meter */
+.flow-meter {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: var(--glass); border: 1px solid var(--border);
+  padding: 0.35rem 0.75rem; border-radius: 8px; backdrop-filter: blur(10px);
+}
+.flow-flame { font-size: 0.85rem; animation: flameFlicker 1.2s ease-in-out infinite alternate; }
+.flow-tier {
+  font-family: var(--font-display); font-size: 0.64rem; font-weight: 900;
+  letter-spacing: 1px; color: var(--cyan); white-space: nowrap;
+}
+.flow-track {
+  width: 50px; height: 5px; border-radius: 3px;
+  background: rgba(255, 255, 255, 0.1); overflow: hidden;
+}
+.flow-fill {
+  height: 100%; width: 15%; border-radius: 3px;
+  background: linear-gradient(90deg, var(--cyan), var(--magenta));
+  box-shadow: 0 0 8px var(--cyan); transition: width 0.2s ease;
+}
+@keyframes flameFlicker { 0% { transform: scale(0.9); } 100% { transform: scale(1.15); } }
+
+/* ------------------------------------------------ Suggestion Chips */
+.suggestion-strip {
+  position: absolute; left: 50%; bottom: 8.2rem; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 0.5rem; pointer-events: auto;
+  z-index: 8;
+}
+.sugg-hint {
+  font-family: var(--font-display); font-size: 0.55rem; font-weight: 700;
+  letter-spacing: 1.5px; color: var(--muted);
+}
+.suggestion-chips { display: flex; gap: 0.35rem; }
+.sugg-chip {
+  padding: 0.28rem 0.65rem; font-size: 0.72rem;
+  background: rgba(14, 22, 38, 0.75); border: 1px solid rgba(0, 229, 255, 0.35);
+  color: var(--cyan); backdrop-filter: blur(8px);
+}
+.sugg-chip:hover {
+  background: var(--cyan); color: #04141a; box-shadow: var(--glow-cyan);
+}
+
+/* ------------------------------------------------ Sub-heads & Drawer Chips */
+.sub-head {
+  font-family: var(--font-display); font-size: 0.62rem; letter-spacing: 1px;
+  color: var(--muted); margin: 0.7rem 0 0.3rem; text-transform: uppercase;
+}
+.order-btn { border-color: rgba(0, 229, 255, 0.35); color: var(--cyan); }
+.order-btn:hover { background: rgba(0, 229, 255, 0.15); }
+.trick-btn { border-color: rgba(255, 45, 120, 0.35); color: var(--magenta); }
+.trick-btn:hover { background: rgba(255, 45, 120, 0.15); }
+.squad-btn { border-color: rgba(255, 171, 0, 0.35); color: #ffab00; }
+.squad-btn:hover { background: rgba(255, 171, 0, 0.15); }
+
+/* Ghost chip for speculative parsing */
+.q-chip.ghost {
+  border-style: dashed; opacity: 0.6; color: var(--cyan);
+}
