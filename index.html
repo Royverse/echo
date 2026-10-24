@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ECHO · Voice-Driven 3D Arcade Football</title>
 
     <link rel="icon" href="/favicon.ico" sizes="48x48" />
@@ -23,12 +23,27 @@
     <meta property="og:description" content="Command a live street-football squad with your voice. Never goes dead." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+  
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebApplication",
+    "name": "ECHO",
+    "description": "Voice-driven 3D arcade street football sandbox powered by Three.js and Web Speech API.",
+    "applicationCategory": "GameApplication",
+    "author": {
+      "@type": "Person",
+      "name": "Roy Mootsana",
+      "url": "https://roymootsana.art"
+    }
+  }
+  </script>
   </head>
   <body>
     <div id="scene"></div>
 
     <!-- HUD -->
-    <div id="hud">
+    <main id="hud">
       <!-- Top bar -->
       <header class="topbar">
         <div class="brand">
@@ -41,10 +56,10 @@
             <span id="flow-tier" class="flow-tier">COOL 1.0x</span>
             <div class="flow-track"><div id="flow-fill" class="flow-fill"></div></div>
           </div>
-          <button id="btn-cam" class="pill" title="Camera mode (C)">◎ FOLLOW</button>
-          <button id="btn-voice" class="pill on" title="Robot voice replies">🗣 VOICE</button>
-          <button id="btn-sound" class="pill on" title="Sound effects (M)">♪ SOUND</button>
-          <button id="btn-help" class="pill" title="Commands & controls (?)">? HELP</button>
+          <button id="btn-cam" class="pill" title="Camera mode (C)" aria-label="Camera mode">◎ FOLLOW</button>
+          <button id="btn-voice" class="pill on" title="Robot voice replies" aria-label="Toggle voice replies">🗣 VOICE</button>
+          <button id="btn-sound" class="pill on" title="Sound effects (M)" aria-label="Toggle sound effects">♪ SOUND</button>
+          <button id="btn-help" class="pill" title="Commands & controls (?)" aria-label="Toggle help drawer">? HELP</button>
         </div>
       </header>
 
@@ -88,7 +103,7 @@
 
       <!-- Bottom-left: microphone -->
       <section class="mic-cluster">
-        <button id="mic-orb" class="mic-orb idle" title="Toggle microphone (Space for Push-to-Talk)">
+        <button id="mic-orb" class="mic-orb idle" title="Toggle microphone (Space for Push-to-Talk)" aria-label="Toggle microphone">
           <span class="level-ring"></span>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
@@ -124,14 +139,14 @@
       <aside id="help-drawer" class="drawer">
         <div class="drawer-head">
           <h2>CAPTAIN CONTROLS</h2>
-          <button id="btn-help-close" class="icon-btn">✕</button>
+          <button id="btn-help-close" class="icon-btn" aria-label="Close help drawer">✕</button>
         </div>
 
         <div class="drawer-scroll">
           <div class="block">
             <h3>SPEAK OR TYPE</h3>
             <div class="manual">
-              <input id="cmd-input" type="text" placeholder='Try: "carry... shield... shoot far post"' autocomplete="off" />
+              <input id="cmd-input" type="text" aria-label="Type speech command" placeholder='Try: "carry... shield... shoot far post"' autocomplete="off" />
               <button id="btn-cmd-send" class="send">SEND</button>
             </div>
             
@@ -225,7 +240,7 @@
           </div>
         </div>
       </aside>
-    </div>
+    </main>
 
     <!-- Splash Screen -->
     <div id="splash" class="splash">

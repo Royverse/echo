@@ -485,3 +485,22 @@ kbd {
 .q-chip.ghost {
   border-style: dashed; opacity: 0.6; color: var(--cyan);
 }
+
+/* ── Accessibility & Performance ── */
+:focus-visible {
+  outline: 2px solid var(--cyan, #00e5ff);
+  outline-offset: 2px;
+}
+
+.scoreboard b, #jc-value, #flow-tier {
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
