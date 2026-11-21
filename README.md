@@ -4,7 +4,7 @@
 
 ### Drive a neon robot through a 3D sandbox — with your voice.
 
-[**Live demo →**](https://echo-voice-sandbox.netlify.app) · Built with Three.js, the Web Speech API, and Gemini
+[**Live demo →**](https://roymootsana.art/echo/) · Built with Three.js, the Web Speech API, and Gemini
 
 </div>
 
